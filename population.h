@@ -32,6 +32,7 @@ private:
     QVector<double> tp;
     int degree;
     const double EPS = 0.0000001;
+    QVector<Point> pPoints;
 
     void calcFitness2003(int index1, int index2, int gen);
     void selection2003(int &index1, int &index2);

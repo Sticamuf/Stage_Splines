@@ -12,6 +12,7 @@
 #include<qdebug.h>
 
 std::mt19937 Individual::mt = std::mt19937{static_cast<std::uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())};
+double Individual::EPS = 0.0000001;
 
 Individual::Individual(int length, int degree) : genes{}
 {
@@ -81,6 +82,171 @@ void Individual::calculateFitness(const QVector<double>& tp, const double *xPoin
         qDebug()<<"erreur";
     }
 
+}
+
+void Individual::calculateFitnessAdaptTime(QVector<double> tp, const double *xPoints, const double *yPoints, int degree, QVector<Point> pPoints)
+{
+    alglib::ae_int_t nbFunctions = genes.size()-(degree+1),
+            nbPoints = tp.length(),
+            info0, info1;
+
+    alglib::real_1d_array y0, y1, c0, c1;
+    y0.setcontent(nbPoints, xPoints);
+    y1.setcontent(nbPoints, yPoints);
+
+    //calcule les t auxquels la spline devrait passer par le point de passage
+    tp.clear();
+    tp.resize(nbPoints);
+    tp[0] = 0;
+
+    for(int i = 1 ; i<nbPoints ; i++){
+        //methode corde
+        tp[i] = tp[i-1] + sqrt(pow(pPoints[i].getValueAtDimension(1)-pPoints[i-1].getValueAtDimension(1),2) +
+                pow(pPoints[i].getValueAtDimension(0)-pPoints[i-1].getValueAtDimension(0),2));
+    }
+    //ranger les t dans [0;1[
+    for(int i = 0 ; i<nbPoints-1 ; i++){
+        tp[i] = tp[i]/(tp[nbPoints-1]);
+    }
+    tp[nbPoints-1] = 1-EPS;
+
+    alglib::lsfitreport rep0, rep1;
+    QVector<Point> ctrlPts;
+
+    QVector<double> Ytp;
+    const double *YtpCDP;
+    alglib::real_2d_array fmatrix;
+
+    int nbDeTours = 2; //pour tester
+    for(int nbt = 0 ; nbt<nbDeTours ; nbt++){
+
+        //calculer le Y de chaque B-Spline en chaque temps tp
+        Ytp.clear();
+        Ytp.reserve(nbPoints*nbFunctions);
+        for(int i = 0 ; i<nbPoints ; i++){
+            for(int j = 0 ; j<nbFunctions ; j++)
+            {
+                Ytp.push_back(calculateBSplineY(degree,j,tp[i]));
+            }
+        }
+
+        YtpCDP = Ytp.data();
+
+
+        fmatrix.setcontent(nbPoints, nbFunctions ,YtpCDP);
+
+        //calculer les points de contrôle
+        alglib::lsfitlinear(y0,fmatrix,nbPoints,nbFunctions,info0,c0,rep0);
+        alglib::lsfitlinear(y1,fmatrix,nbPoints,nbFunctions,info1,c1,rep1);
+
+
+
+        ctrlPts.clear();
+        ctrlPts.reserve(c0.length());
+        for(int i = 0 ; i<c0.length() ; i++)
+        {
+            Point p = Point({c0[i], c1[i]});
+            ctrlPts.push_back(p);
+        }
+
+        //pour chaque temps
+        for(int j = 1 ; j<tp.length()-1 ; j++)
+        {
+            double t_p = (rand() / static_cast<double>(RAND_MAX)) * (tp[j]-tp[j-1]) + tp[j-1];
+            double t_pp = (rand() / static_cast<double>(RAND_MAX)) * (tp[j+1]-tp[j]) + tp[j];
+
+            //rechercher l'indice du noeud tel que ce noeud <= au temps utilisé pour calculer le point de passage
+            int indexT = -1;
+            int indexTP = -1;
+            int indexTPP = -1;
+            for(int k = degree ; k<static_cast<int>(genes.size()-degree-1) ; k++)
+            {
+                if(*std::next(genes.begin(),k) <= tp[j])
+                {
+                    indexT = k;
+                }
+                if(*std::next(genes.begin(),k) <= t_p)
+                {
+                    indexTP = k;
+                }
+                if(*std::next(genes.begin(),k) <= t_pp)
+                {
+                    indexTPP = k;
+                }
+            }
+            //si l'indice existe comparer l'erreur pour chaque temps et remplacer ce temps par celui qui a la plus petite erreur
+            if(indexT != -1)
+            {
+                Point point_t = deBoor(indexT,tp[j],degree,ctrlPts);
+                Point point_t_p = deBoor(indexTP,t_p,degree,ctrlPts);
+                Point point_t_pp = deBoor(indexTPP, t_pp,degree,ctrlPts);
+
+                double err_t = pow(point_t.getValueAtDimension(0) - pPoints[j].getValueAtDimension(0), 2) +
+                        pow(point_t.getValueAtDimension(1) - pPoints[j].getValueAtDimension(1), 2);
+
+                double err_t_p = pow(point_t_p.getValueAtDimension(0) - pPoints[j].getValueAtDimension(0), 2) +
+                        pow(point_t_p.getValueAtDimension(1) - pPoints[j].getValueAtDimension(1), 2);
+
+                double err_t_pp = pow(point_t_pp.getValueAtDimension(0) - pPoints[j].getValueAtDimension(0), 2) +
+                        pow(point_t_pp.getValueAtDimension(1) - pPoints[j].getValueAtDimension(1), 2);
+
+                if(err_t_p < err_t && err_t_p < err_t_pp){
+                    tp[j] = t_p;
+                }else if(err_t_pp < err_t && err_t_pp < err_t_p){
+                    tp[j] = t_pp;
+                }
+
+                if(tp[j] == 1)
+                    tp[j] -= EPS;
+            }
+        }
+    }
+
+    //calculer les points de contrôle
+    alglib::lsfitlinear(y0,fmatrix,nbPoints,nbFunctions,info0,c0,rep0);
+    alglib::lsfitlinear(y1,fmatrix,nbPoints,nbFunctions,info1,c1,rep1);
+
+    if(info0 != 4 && info1 != 4){
+
+        errX = pow(rep0.rmserror,2)*nbPoints;
+        errY = pow(rep1.rmserror,2)*nbPoints;
+
+        ctrlPtsX = c0;
+        ctrlPtsY = c1;
+
+        int N = nbPoints;
+        int n = genes.size()-(2*(degree+1));
+        int m = degree+1;
+        double knotError = log(N)*(2*n+m);
+
+        double xErr = (N*(log(errX+1))) + knotError;
+        double yErr = (N*(log(errY+1))) + knotError;
+
+        fitness = xErr+yErr;
+    }else{
+        qDebug()<<"erreur";
+    }
+
+}
+
+Point Individual::deBoor(int indexOfIntervalOfT, double t, int degree, const QVector<Point> controlPoints)
+{
+    //renvoie le point de la spline au temps t
+    QVector<Point> d;
+    d.reserve(degree+1);
+    for(int j = 0 ; j<degree+1 ; j++)
+    {
+        d.push_back(controlPoints[j+indexOfIntervalOfT-degree]);
+    }
+    for(int r = 1 ; r<degree+1 ; r++)
+    {
+        for(int j = degree ; j>r-1 ; j--)
+        {
+            double alpha = (t-*std::next(genes.begin(),j+indexOfIntervalOfT-degree)) / (*std::next(genes.begin(),j+1+indexOfIntervalOfT-r) - *std::next(genes.begin(),j+indexOfIntervalOfT-degree));
+            d[j] = d[j-1] * (1-alpha) + d[j] * alpha;
+        }
+    }
+    return d[degree];
 }
 
 double Individual::calculateBSplineY(int k, int i, double t)

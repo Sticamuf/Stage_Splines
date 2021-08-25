@@ -730,13 +730,14 @@ void Window::calcTimePressed()
     alglib::lsfitreport rep0, rep1;
     QVector<Point> ctrlPts;
 
-    QVector<Point> pPoints = spl.getPassingPoints();
+//    QVector<Point> pPoints = spl.getPassingPoints();
+    QVector<double> Ytp;
 
     int nbDeTours = 100; //pour tester
     for(int nbt = 0 ; nbt<nbDeTours ; nbt++){
 
         //calculer le Y de chaque B-Spline en chaque temps tp
-        QVector<double> Ytp;
+        Ytp.clear();
         Ytp.reserve(tp.length()*spl.getBSplineY().length());
         for(int i = 0 ; i<tp.length() ; i++){
             for(int j = 0 ; j<spl.getBSplineY().length() ; j++)
@@ -764,41 +765,53 @@ void Window::calcTimePressed()
         spl.setControlPoints(ctrlPts);
         glWidget->setSpl(spl);
 
-
+        //pour chaque temps
         for(int j = 1 ; j<tp.length()-1 ; j++)
         {
             double t_p = (rand() / static_cast<double>(RAND_MAX)) * (tp[j]-tp[j-1]) + tp[j-1];
             double t_pp = (rand() / static_cast<double>(RAND_MAX)) * (tp[j+1]-tp[j]) + tp[j];
 
             //rechercher l'indice du noeud tel que ce noeud <= au temps utilisé pour calculer le point de passage
-            int index = -1;
+            int indexT = -1;
+            int indexTP = -1;
+            int indexTPP = -1;
             for(int k = spl.getDegree() ; k<spl.getKnots().length()-spl.getDegree()-1 ; k++)
             {
-                if(spl.getKnotAt(j) <= tp[k])
+                if(spl.getKnotAt(k) <= tp[j])
                 {
-                    index = k;
+                    indexT = k;
+                }
+                if(spl.getKnotAt(k) <= t_p)
+                {
+                    indexTP = k;
+                }
+                if(spl.getKnotAt(k) <= t_pp)
+                {
+                    indexTPP = k;
                 }
             }
             //si l'indice existe comparer l'erreur pour chaque temps et remplacer ce temps par celui qui a la plus petite erreur
-            if(index != -1)
+            if(indexT != -1)
             {
-                Point point_t = spl.deBoor(index,tp[j]);
-                Point point_t_p = spl.deBoor(index,t_p);
-                Point point_t_pp = spl.deBoor(index, t_pp);
+                Point point_t = spl.deBoor(indexT,tp[j]);
+                Point point_t_p = spl.deBoor(indexTP,t_p);
+                Point point_t_pp = spl.deBoor(indexTPP, t_pp);
 
-                double err_t = pow(point_t.getValueAtDimension(0) - pPoints[j].getValueAtDimension(0), 2) +
-                        pow(point_t.getValueAtDimension(1) - pPoints[j].getValueAtDimension(1), 2);
+                double err_t = pow(point_t.getValueAtDimension(0) - points[j].getValueAtDimension(0), 2) +
+                        pow(point_t.getValueAtDimension(1) - points[j].getValueAtDimension(1), 2);
 
-                double err_t_p = pow(point_t_p.getValueAtDimension(0) - pPoints[j].getValueAtDimension(0), 2) +
-                        pow(point_t_p.getValueAtDimension(1) - pPoints[j].getValueAtDimension(1), 2);
+                double err_t_p = pow(point_t_p.getValueAtDimension(0) - points[j].getValueAtDimension(0), 2) +
+                        pow(point_t_p.getValueAtDimension(1) - points[j].getValueAtDimension(1), 2);
 
-                double err_t_pp = pow(point_t_pp.getValueAtDimension(0) - pPoints[j].getValueAtDimension(0), 2) +
-                        pow(point_t_pp.getValueAtDimension(1) - pPoints[j].getValueAtDimension(1), 2);
+                double err_t_pp = pow(point_t_pp.getValueAtDimension(0) - points[j].getValueAtDimension(0), 2) +
+                        pow(point_t_pp.getValueAtDimension(1) - points[j].getValueAtDimension(1), 2);
 
                 if(err_t_p < err_t && err_t_p < err_t_pp){
                     tp[j] = t_p;
+//                    qDebug()<<"temps plus petit t="<<j<<"tour"<<nbt;
                 }else if(err_t_pp < err_t && err_t_pp < err_t_p){
                     tp[j] = t_pp;
+//                    qDebug()<<"temps plus grand t="<<j<<"tour"<<nbt;
                 }
 
                 if(tp[j] == 1)

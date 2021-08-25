@@ -20,6 +20,13 @@ public:
 
     //tp le tableau des temps auxquels doit passer la spline pour chaque point de passage
     void calculateFitness(const QVector<double>& tp, const double *xPoints, const double *yPoints, int degree);
+
+    //calcule la fitness de l'individu en adaptant le tableau des temps
+    void calculateFitnessAdaptTime(QVector<double> tp, const double *xPoints, const double *yPoints, int degree, QVector<Point> pPoints);
+
+    //renvoie le point de la plsine au temps t
+    Point deBoor(int indexOfIntervalOfT, double t, int degree, const QVector<Point> controlPoints);
+
     //k = degré, t = temps, i = i-ème b-spline
     double calculateBSplineY(int k,int i, double t);
 
@@ -96,6 +103,7 @@ private:
     alglib::real_1d_array ctrlPtsY;
 
     static std::mt19937 mt;
+    static double EPS;
 
     /**
      * @brief generateRand
