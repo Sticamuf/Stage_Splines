@@ -26,6 +26,8 @@ public:
 
     QCustomPlot *getPlot() const;
 
+    void convexe();
+
 public slots:
     void updateErrors(double xErr, double yErr, double fitness);
 

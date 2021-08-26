@@ -765,6 +765,8 @@ void Window::calcTimePressed()
         spl.setControlPoints(ctrlPts);
         glWidget->setSpl(spl);
 
+//        convexe();//va créer des fichiers pour vérifier si tous les temps doivent aller dans le même sens
+
         //pour chaque temps
         for(int j = 1 ; j<tp.length()-1 ; j++)
         {
@@ -862,6 +864,41 @@ void Window::calcTimePressed()
     }
 
     showPlot();
+
+
+}
+
+void Window::convexe()//on considère le temps déja calculé avec la méthode de la corde et les points de contrôle présents
+{
+    //fonction permettant de voir s'il faut toujours déplacer le temps des points dans un sens ou non -> peut permette d'améliorer la fonction calcTimePressed()
+    int nbPrelevement = 100;
+    for(int i = 1 ; i < tp.length()-1 ; i++){
+
+        std::string s = "convexe"+std::to_string(i)+".txt";
+        std::ofstream out(s);
+        for(int j = 0 ; j<nbPrelevement ; j++){
+            double temps = tp[i-1] + (j/static_cast<double>(nbPrelevement))*(tp[i+1]-tp[i-1]);
+
+            //rechercher l'indice du noeud tel que ce noeud <= au temps utilisé pour calculer le point de passage
+            int index = -1;
+            for(int k = spl.getDegree() ; k<spl.getKnots().length()-spl.getDegree()-1 ; k++){
+                if(spl.getKnotAt(k)<=temps){
+                    index = k;
+                }
+            }
+
+            //si l'indice existe comparer l'erreur pour chaque temps et remplacer ce temps par celui qui a la plus petite erreur
+            if(index != -1){
+                Point p = spl.deBoor(index,temps);
+
+                double err = pow(p.getValueAtDimension(0) - spl.getPassingPointAt(j).getValueAtDimension(0), 2) +
+                        pow(p.getValueAtDimension(1) - spl.getPassingPointAt(j).getValueAtDimension(1), 2);
+
+                out<</*j<<' '<<*/err<<std::endl;
+            }
+        }
+        out.close();
+    }
 
 
 }
